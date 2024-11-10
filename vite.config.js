@@ -8,10 +8,16 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
     },
+    extensions: ['.mjs', '.js', '.jsx', '.ts', '.tsx', '.json']
   },
   build: {
     outDir: 'dist',
     sourcemap: true,
+    rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html')
+      }
+    }
   },
   server: {
     port: 3000,
