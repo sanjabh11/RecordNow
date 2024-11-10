@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import Home from './pages/Home';
-import RecordingStudio from './pages/RecordingStudio';
+import Home from './pages/Home.jsx';
+import RecordingStudio from './pages/RecordingStudio.jsx';
 import './styles/main.css';
 
 function App() {
