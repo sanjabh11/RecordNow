@@ -8,6 +8,7 @@ const DB_NAME = 'recordnow_db';
 const DB_VERSION = 1;
 const STORE_NAME = 'recordings';
 const ANON_ID_KEY = 'recordnow_anonymous_id';
+const DISPLAY_NAME_KEY = 'recordnow_display_name';
 
 export const useAnonymousStorage = () => {
   const [recordings, setRecordings] = useState([]);
@@ -15,6 +16,24 @@ export const useAnonymousStorage = () => {
   const [storageError, setStorageError] = useState(null);
   const [db, setDb] = useState(null);
   const [initialized, setInitialized] = useState(false);
+
+  // Display name helpers stored in localStorage (local-first identity)
+  const getDisplayName = () => {
+    try {
+      return localStorage.getItem(DISPLAY_NAME_KEY) || '';
+    } catch (e) {
+      return '';
+    }
+  };
+
+  const setDisplayName = (name) => {
+    try {
+      if (name) localStorage.setItem(DISPLAY_NAME_KEY, name);
+      else localStorage.removeItem(DISPLAY_NAME_KEY);
+    } catch (e) {
+      // ignore write errors
+    }
+  };
 
   // Initialize IndexedDB
   useEffect(() => {
@@ -132,6 +151,7 @@ export const useAnonymousStorage = () => {
         size: blob.size,
         ownerId: anonymousId || null,
         deleteToken: uuidv4(),
+        ownerName: metadata.ownerName || getDisplayName() || '',
         ...metadata
       };
 
@@ -232,7 +252,9 @@ export const useAnonymousStorage = () => {
     storageError,
     getRecordingById,
     updateRecording,
-    initialized
+    initialized,
+    getDisplayName,
+    setDisplayName
   };
 };
  

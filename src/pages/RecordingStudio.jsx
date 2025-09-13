@@ -19,7 +19,7 @@ const RecordingStudio = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [selectedRecording, setSelectedRecording] = useState(null);
   const [error, setError] = useState(null);
-  const { recordings, addRecording, getRecordingCount, storageError } = useAnonymousStorage();
+  const { recordings, addRecording, getRecordingCount, storageError, getDisplayName, setDisplayName } = useAnonymousStorage();
   const [lastSavedRecording, setLastSavedRecording] = useState(null);
   const [showPrivacyNotice, setShowPrivacyNotice] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -60,15 +60,19 @@ const RecordingStudio = () => {
     }
   };
 
-  const handleConfirmSave = async ({ title, format }) => {
+  const handleConfirmSave = async ({ title, format, displayName }) => {
     try {
       const defaultTitle = `Recording ${recordingCount + 1}`;
       const name = (title || defaultTitle).trim();
+      if (typeof displayName === 'string') {
+        setDisplayName(displayName.trim());
+      }
       const saved = await addRecording(pendingSave.blob, {
         type: 'recording',
         duration: pendingSave.duration,
         name,
-        format
+        format,
+        ownerName: (displayName || getDisplayName() || '').trim()
       });
       setAudioBlob(pendingSave.blob);
       setSelectedRecording({ ...saved, blob: pendingSave.blob });
@@ -148,6 +152,7 @@ const RecordingStudio = () => {
         onConfirm={handleConfirmSave}
         defaultTitle={`Recording ${recordingCount + 1}`}
         duration={pendingSave.duration}
+        initialDisplayName={getDisplayName()}
       />
     </div>
   );

@@ -144,6 +144,11 @@ const NotePage = () => {
             {saving ? 'Saving...' : 'Save Title'}
           </button>
         </div>
+        {recording?.ownerName && (
+          <div style={{ marginTop: 6, color: 'var(--text-muted)', fontSize: 13 }}>
+            Shared by <strong>{recording.ownerName}</strong>
+          </div>
+        )}
         <div className="note-actions">
           <button
             className="danger-button"
