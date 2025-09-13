@@ -14,6 +14,8 @@ const NotePage = () => {
     getRecordingBlob,
     updateRecording,
     deleteRecording,
+    setDisplayName,
+    getDisplayName,
     initialized,
   } = useAnonymousStorage();
 
@@ -85,6 +87,16 @@ const NotePage = () => {
     () => `<iframe src="${shareUrl}" width="100%" height="160" frameborder="0"></iframe>`,
     [shareUrl]
   );
+  const [identity, setIdentity] = useState('');
+  useEffect(() => {
+    setIdentity(getDisplayName() || recording?.ownerName || '');
+  }, [recording]);
+
+  const shareMessage = useMemo(() => {
+    const home = window.location.origin + '/';
+    const who = identity ? `${identity} shared a recording.` : 'Here is a recording.';
+    return `${who}\n${shareUrl}\n\nDo you want to use this app? ${home}`;
+  }, [identity, shareUrl]);
 
   const onSaveTitle = async () => {
     if (!recording) return;
@@ -179,12 +191,30 @@ const NotePage = () => {
       <section className="share-section">
         <h3>Share</h3>
         <div className="share-row">
-          <input className="share-link" readOnly value={shareUrl} />
+          <input
+            className="title-input"
+            placeholder="Your name (optional)"
+            value={identity}
+            onChange={(e) => setIdentity(e.target.value)}
+            onBlur={async () => {
+              try {
+                setDisplayName(identity.trim());
+                if (recording) {
+                  await updateRecording(recording.id, { ownerName: identity.trim() });
+                  setRecording({ ...recording, ownerName: identity.trim() });
+                }
+                toast('Saved your name');
+              } catch {}
+            }}
+          />
+        </div>
+        <div className="share-row">
+          <textarea className="embed-code" readOnly value={shareMessage} rows={3} />
           <button
             className="secondary-button"
-            onClick={() => { navigator.clipboard.writeText(shareUrl); toast('Copied link'); }}
+            onClick={() => { navigator.clipboard.writeText(shareMessage); toast('Copied message'); }}
           >
-            Copy Link
+            Copy Message
           </button>
         </div>
         <div className="share-row">

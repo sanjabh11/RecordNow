@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
 import { analytics } from '../../utils/analytics';
 import { toast } from '../ui/Toasts.jsx';
+import { useAnonymousStorage } from '../../hooks/useAnonymousStorage';
 
 const SharingOptions = ({ recording }) => {
   const [copied, setCopied] = useState(false);
+  const { setDisplayName, getDisplayName, updateRecording } = useAnonymousStorage();
+  const [identity, setIdentity] = useState('');
+  React.useEffect(() => {
+    setIdentity(getDisplayName() || recording?.ownerName || '');
+  }, [recording]);
   const [embedOpen, setEmbedOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
 
@@ -30,15 +36,22 @@ const SharingOptions = ({ recording }) => {
     });
   };
 
+  const buildShareMessage = () => {
+    const note = generateShareableLink();
+    const home = window.location.origin + '/';
+    const who = identity ? `${identity} shared a recording.` : 'Here is a recording.';
+    return `${who}\n${note}\n\nHow about recording your own voicenote or song? ${home}`;
+  };
+
   const handleShare = (platform) => {
     const link = generateShareableLink();
-    const text = 'Check out my recording on RecordNow!';
+    const text = buildShareMessage();
     
     const shareUrls = {
       twitter: `https://twitter.com/intent/tweet?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`,
-      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}&quote=${encodeURIComponent(text)}`,
       linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(link)}`,
-      whatsapp: `https://wa.me/?text=${encodeURIComponent(text + ' ' + link)}`
+      whatsapp: `https://wa.me/?text=${encodeURIComponent(text)}`
     };
 
     const w = window.open(shareUrls[platform], '_blank', 'width=600,height=400,noopener,noreferrer');
@@ -52,19 +65,36 @@ const SharingOptions = ({ recording }) => {
   return (
     <div className="sharing-options">
       <h3>Share Your Recording</h3>
+      <div className="share-row">
+        <input
+          className="title-input"
+          placeholder="Your name (optional)"
+          value={identity}
+          onChange={(e) => setIdentity(e.target.value)}
+          onBlur={async () => {
+            try {
+              setDisplayName(identity.trim());
+              if (recording?.id) {
+                await updateRecording(recording.id, { ownerName: identity.trim() });
+              }
+              toast('Saved your name');
+            } catch {}
+          }}
+        />
+      </div>
       <ol className="share-steps">
         <li className="glass" style={{ padding: 12, borderRadius: 12 }}>
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
               <div style={{ fontWeight: 600 }}>Copy link</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Local link works only on this device/browser.</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>Local link works only on this device/browser. Includes a short app invite.</div>
             </div>
             <button 
               className="primary-button"
               onClick={() => {
-                const link = generateShareableLink();
-                copyToClipboard(link);
-                analytics.event('copy_link', { link });
+                const msg = buildShareMessage();
+                copyToClipboard(msg);
+                analytics.event('copy_link', { length: msg.length });
               }}
             >
               {copied ? 'Copied!' : 'Copy Link'}

@@ -2,7 +2,7 @@
 :root {
   --primary-color: #3b82f6; /* blue-500 */
   --secondary-color: #7c4dff;
-  --bg: #ffffff;
+  --bg: radial-gradient(1200px 700px at 20% -10%, #eaf3ff 0%, #dbeafe 35%, #eff6ff 70%, #ffffff 100%);
   --bg-muted: #f3f6fa;
   --glass-bg: rgba(255,255,255,0.72);
   --glass-border: rgba(17,24,39,0.08);
