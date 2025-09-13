@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import WaveSurfer from 'wavesurfer.js';
+import { analytics } from '../../utils/analytics';
 
 const RecordingInterface = ({ 
   isRecording, 
@@ -28,6 +29,21 @@ const RecordingInterface = ({
     return () => wavesurfer.current.destroy();
   }, []);
 
+  // Warn user if navigating away while recording
+  useEffect(() => {
+    const beforeUnload = (e) => {
+      e.preventDefault();
+      e.returnValue = '';
+      return '';
+    };
+    if (isRecording) {
+      window.addEventListener('beforeunload', beforeUnload);
+    }
+    return () => {
+      window.removeEventListener('beforeunload', beforeUnload);
+    };
+  }, [isRecording]);
+
   const startRecording = async () => {
     if (recordingCount >= 10) {
       setError('Recording limit reached. Please upgrade to premium for unlimited recordings.');
@@ -43,6 +59,7 @@ const RecordingInterface = ({
       recorder.onstop = () => {
         const blob = new Blob(chunks.current, { type: 'audio/webm' });
         chunks.current = [];
+        analytics.event('record_stop', { bytes: blob.size });
         onRecordingComplete(blob);
       };
 
@@ -50,8 +67,10 @@ const RecordingInterface = ({
       recorder.start();
       setIsRecording(true);
       startTimer();
+      analytics.event('record_start');
     } catch (err) {
-      setError('Microphone access denied. Please allow microphone access to record.');
+      setError('Microphone access denied or unavailable. Please enable mic permissions in your browser settings (Site settings → Microphone) and try again.');
+      analytics.event('permission_denied', { type: 'microphone' });
     }
   };
 
@@ -91,6 +110,7 @@ const RecordingInterface = ({
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
+    analytics.event('upload_select', { name: file.name, size: file.size, type: file.type });
 
     // Update valid file types to include AAC
     const validTypes = ['.mp3', '.wav', '.m4a', '.aac'];
@@ -164,36 +184,44 @@ const RecordingInterface = ({
   return (
     <div className="recording-options">
       <section className="record-section">
-        <h2>START RECORDING</h2>
+        <h2 aria-live="polite">Start Recording</h2>
         <button 
           className={`record-button ${isRecording ? 'recording' : ''}`}
           onClick={isRecording ? stopRecording : startRecording}
           disabled={recordingCount >= 10}
-        >
+          >
           <i className="microphone-icon"></i>
         </button>
+        {isRecording && (
+          <div className="info-banner">
+            Recording in progress. Please do not close the tab or navigate away until you stop.
+          </div>
+        )}
         <div className="timer">
           {formatTime(timer)}/02:00
         </div>
+        <p className="microcopy">Record voice directly, or upload an audio file below</p>
         {error && <div className="error-message">{error}</div>}
       </section>
 
-      <div ref={waveformRef} className="waveform"></div>
+      <div ref={waveformRef} className="waveform" aria-label="Waveform visualization" />
 
       <section className="upload-section">
-        <h2>OR</h2>
-        <div 
-          className="upload-area"
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
+        <h3 className="upload-title">Or upload a file</h3>
+        <div
+          className="dropzone"
+          onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }}
+          onDragLeave={(e) => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); }}
+          onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove('drag-over'); if (e.dataTransfer.files && e.dataTransfer.files[0]) { handleFileUpload({ target: { files: e.dataTransfer.files } }); }}}
+          onClick={() => fileInputRef.current && fileInputRef.current.click()}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current && fileInputRef.current.click(); } }}
+          aria-label="Drag and drop or click to select an audio file"
         >
-          <h3>SELECT AUDIO FILE</h3>
-          <p>DROP YOUR MP3/WAV/M4A/AAC HERE. 60MB LIMIT</p>
-          <input 
-            type="file" 
-            accept="audio/mpeg,audio/wav,audio/x-m4a,audio/aac,audio/x-aac,.mp3,.wav,.m4a,.aac"
-            onChange={handleFileUpload}
-          />
+          <div className="upload-icon" aria-hidden>⬆️</div>
+          <div className="upload-text">Drag & drop or click to browse.</div>
+          <div className="upload-meta">Up to 60 MB. MP3, WAV, M4A, AAC.</div>
         </div>
       </section>
     </div>

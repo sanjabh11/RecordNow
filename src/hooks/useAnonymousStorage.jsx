@@ -7,15 +7,29 @@ const RETENTION_DAYS = 30;
 const DB_NAME = 'recordnow_db';
 const DB_VERSION = 1;
 const STORE_NAME = 'recordings';
+const ANON_ID_KEY = 'recordnow_anonymous_id';
 
 export const useAnonymousStorage = () => {
   const [recordings, setRecordings] = useState([]);
   const [anonymousId, setAnonymousId] = useState(null);
   const [storageError, setStorageError] = useState(null);
   const [db, setDb] = useState(null);
+  const [initialized, setInitialized] = useState(false);
 
   // Initialize IndexedDB
   useEffect(() => {
+    // Initialize anonymous ID once per browser
+    try {
+      let anon = localStorage.getItem(ANON_ID_KEY);
+      if (!anon) {
+        anon = uuidv4();
+        localStorage.setItem(ANON_ID_KEY, anon);
+      }
+      setAnonymousId(anon);
+    } catch (e) {
+      // localStorage might be blocked; stay anonymousId = null
+    }
+
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
     request.onerror = (event) => {
@@ -33,6 +47,7 @@ export const useAnonymousStorage = () => {
     request.onsuccess = (event) => {
       setDb(event.target.result);
       loadRecordings(event.target.result);
+      setInitialized(true);
     };
   }, []);
 
@@ -115,6 +130,8 @@ export const useAnonymousStorage = () => {
         createdAt: new Date().toISOString(),
         expiresAt: expiryDate.toISOString(),
         size: blob.size,
+        ownerId: anonymousId || null,
+        deleteToken: uuidv4(),
         ...metadata
       };
 
@@ -159,6 +176,50 @@ export const useAnonymousStorage = () => {
     }
   };
 
+  const getRecordingById = async (recordingId) => {
+    if (!db) return null;
+    return await new Promise((resolve, reject) => {
+      try {
+        const transaction = db.transaction([STORE_NAME], 'readonly');
+        const store = transaction.objectStore(STORE_NAME);
+        const request = store.get(recordingId);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = (e) => reject(e);
+      } catch (e) {
+        reject(e);
+      }
+    });
+  };
+
+  const updateRecording = async (recordingId, patch) => {
+    if (!db) throw new Error('Storage not initialized');
+    return await new Promise((resolve, reject) => {
+      try {
+        const transaction = db.transaction([STORE_NAME], 'readwrite');
+        const store = transaction.objectStore(STORE_NAME);
+        const getReq = store.get(recordingId);
+        getReq.onsuccess = () => {
+          const existing = getReq.result;
+          if (!existing) {
+            reject(new Error('Recording not found'));
+            return;
+          }
+          const updated = { ...existing, ...patch };
+          const putReq = store.put(updated);
+          putReq.onsuccess = () => {
+            // Update state
+            setRecordings(prev => prev.map(r => (r.id === recordingId ? updated : r)));
+            resolve(updated);
+          };
+          putReq.onerror = reject;
+        };
+        getReq.onerror = reject;
+      } catch (e) {
+        reject(e);
+      }
+    });
+  };
+
   const getRecordingCount = () => recordings.length;
 
   return {
@@ -168,6 +229,10 @@ export const useAnonymousStorage = () => {
     getRecordingCount,
     getRecordingBlob,
     anonymousId,
-    storageError
+    storageError,
+    getRecordingById,
+    updateRecording,
+    initialized
   };
-}; 
+};
+ 

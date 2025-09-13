@@ -5,6 +5,8 @@ const PlaybackControls = ({ audioBlob }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState('00:00');
   const [duration, setDuration] = useState('00:00');
+  const [progress, setProgress] = useState(0); // 0..1
+  const [volume, setVolume] = useState(1); // 0..1
   const [selectedEffect, setSelectedEffect] = useState(null);
   const [error, setError] = useState(null);
   
@@ -12,97 +14,91 @@ const PlaybackControls = ({ audioBlob }) => {
   const wavesurfer = useRef(null);
   const audioUrlRef = useRef(null);
 
+  // Initialize WaveSurfer once
   useEffect(() => {
-    // Initialize WaveSurfer with noise reduction settings
-    if (!wavesurfer.current) {
-      try {
-        wavesurfer.current = WaveSurfer.create({
-          container: waveformRef.current,
-          waveColor: 'var(--primary-color)',
-          progressColor: 'var(--secondary-color)',
-          cursorWidth: 1,
-          height: 80,
-          responsive: true,
-          normalize: true,
-          backend: 'WebAudio',
-          minPxPerSec: 50,
-          barWidth: 2,
-          barGap: 1,
-          interact: true,
-        });
+    try {
+      wavesurfer.current = WaveSurfer.create({
+        container: waveformRef.current,
+        waveColor: 'var(--primary-color)',
+        progressColor: 'var(--secondary-color)',
+        cursorWidth: 1,
+        height: 80,
+        responsive: true,
+        normalize: true,
+        minPxPerSec: 50,
+        barWidth: 2,
+        barGap: 1,
+        interact: true,
+      });
 
-        // Add audio processing for noise reduction
-        wavesurfer.current.on('ready', () => {
-          try {
-            const audioContext = wavesurfer.current.backend.ac;
-            if (audioContext && wavesurfer.current.backend.source) {
-              const source = wavesurfer.current.backend.source;
+      wavesurfer.current.on('ready', () => {
+        const d = wavesurfer.current.getDuration();
+        setDuration(formatTime(isFinite(d) ? d : 0));
+        setProgress(0);
+        wavesurfer.current.setVolume(volume);
+      });
 
-              // Create filters
-              const lowpass = audioContext.createBiquadFilter();
-              lowpass.type = 'lowpass';
-              lowpass.frequency.value = 8000;
-              lowpass.Q.value = 0.5;
+      wavesurfer.current.on('audioprocess', () => {
+        const t = wavesurfer.current.getCurrentTime();
+        const d = wavesurfer.current.getDuration() || 1;
+        setCurrentTime(formatTime(t));
+        setProgress(Math.max(0, Math.min(1, t / d)));
+        setIsPlaying(wavesurfer.current.isPlaying());
+      });
 
-              const highpass = audioContext.createBiquadFilter();
-              highpass.type = 'highpass';
-              highpass.frequency.value = 20;
-              highpass.Q.value = 0.5;
-
-              // Connect the filters
-              source.disconnect();
-              source.connect(highpass);
-              highpass.connect(lowpass);
-              lowpass.connect(audioContext.destination);
-            }
-            setDuration(formatTime(wavesurfer.current.getDuration()));
-          } catch (err) {
-            console.warn('Audio processing setup failed:', err);
-            // Continue without audio processing if it fails
-          }
-        });
-
-        wavesurfer.current.on('audioprocess', () => {
-          setCurrentTime(formatTime(wavesurfer.current.getCurrentTime()));
-        });
-
-        wavesurfer.current.on('error', (err) => {
+      wavesurfer.current.on('error', (err) => {
+        // Suppress console noise for AbortError (harmless during rapid unmounts or reloads)
+        const isAbort = err && (err.name === 'AbortError' || `${err}`.includes('AbortError'));
+        if (!isAbort) {
           console.error('WaveSurfer error:', err);
-          setError('Failed to load audio. Please try again.');
-        });
-
-        wavesurfer.current.on('finish', () => {
-          setIsPlaying(false);
-        });
-      } catch (err) {
-        console.error('WaveSurfer initialization error:', err);
-        setError('Failed to initialize audio player');
-      }
-    }
-
-    // Load audio blob
-    if (audioBlob) {
-      try {
-        // Clean up previous URL if it exists
-        if (audioUrlRef.current) {
-          URL.revokeObjectURL(audioUrlRef.current);
         }
-        
-        audioUrlRef.current = URL.createObjectURL(audioBlob);
-        wavesurfer.current.load(audioUrlRef.current);
-      } catch (err) {
-        console.error('Audio loading error:', err);
-        setError('Failed to load audio file');
-      }
+        // Avoid surfacing AbortError to users (common on rapid unmounts)
+        if (!isAbort) {
+          setError('Failed to load audio. Please try again.');
+        }
+      });
+
+      wavesurfer.current.on('finish', () => {
+        setIsPlaying(false);
+        setProgress(1);
+      });
+    } catch (err) {
+      console.error('WaveSurfer initialization error:', err);
+      setError('Failed to initialize audio player');
     }
 
     return () => {
-      if (audioUrlRef.current) {
-        URL.revokeObjectURL(audioUrlRef.current);
-      }
+      // Cleanup instance on unmount
       if (wavesurfer.current) {
         wavesurfer.current.destroy();
         wavesurfer.current = null;
+      }
+    };
+  }, []);
+
+  // Load audio when blob changes
+  useEffect(() => {
+    if (!wavesurfer.current || !audioBlob) return;
+    try {
+      if (audioUrlRef.current) URL.revokeObjectURL(audioUrlRef.current);
+      audioUrlRef.current = URL.createObjectURL(audioBlob);
+      wavesurfer.current.load(audioUrlRef.current).catch((err) => {
+        // Catch promise rejection from load
+        const isAbort = err && (err.name === 'AbortError' || `${err}`.includes('AbortError'));
+        if (!isAbort) {
+          console.error('WaveSurfer load error:', err);
+          setError('Failed to load audio file');
+        }
+      });
+      setError(null);
+    } catch (err) {
+      console.error('Audio loading error:', err);
+      setError('Failed to load audio file');
+    }
+    return () => {
+      if (audioUrlRef.current) {
+        URL.revokeObjectURL(audioUrlRef.current);
+        audioUrlRef.current = null;
       }
     };
   }, [audioBlob]);
@@ -117,7 +113,23 @@ const PlaybackControls = ({ audioBlob }) => {
     e.preventDefault(); // Prevent default link behavior
     if (wavesurfer.current) {
       wavesurfer.current.playPause();
-      setIsPlaying(!isPlaying);
+      setIsPlaying(wavesurfer.current.isPlaying());
+    }
+  };
+
+  const onSeek = (e) => {
+    const value = parseFloat(e.target.value);
+    setProgress(value);
+    if (wavesurfer.current) {
+      wavesurfer.current.seekTo(value);
+    }
+  };
+
+  const onVolume = (e) => {
+    const value = parseFloat(e.target.value);
+    setVolume(value);
+    if (wavesurfer.current) {
+      wavesurfer.current.setVolume(value);
     }
   };
 
@@ -131,22 +143,44 @@ const PlaybackControls = ({ audioBlob }) => {
       {error && <div className="error-message">{error}</div>}
       <div className="audio-player">
         <button 
-          className={`play-pause-button ${isPlaying ? 'playing' : ''}`}
+          className="play-pause-button" 
           onClick={togglePlayPause}
+          aria-label={isPlaying ? 'Pause' : 'Play'}
         >
-          {isPlaying ? '⏸️' : '▶️'}
+          {isPlaying ? '⏸' : '▶'}
         </button>
-        
-        <div ref={waveformRef} className="waveform-playback"></div>
-        
+        <div className="waveform-playback" ref={waveformRef}></div>
         <div className="time-display">
           {currentTime} / {duration}
         </div>
       </div>
-
+      <div className="player-controls-row">
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.001"
+          value={progress}
+          onChange={onSeek}
+          aria-label="Seek"
+          className="seekbar"
+        />
+        <div className="volume">
+          <span aria-hidden>🔊</span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.01"
+            value={volume}
+            onChange={onVolume}
+            aria-label="Volume"
+          />
+        </div>
+      </div>
       <div className="modification-controls">
         <select 
-          value={selectedEffect || ''} 
+          value={selectedEffect || ''}
           onChange={(e) => applyEffect(e.target.value)}
           className="effect-select"
         >
