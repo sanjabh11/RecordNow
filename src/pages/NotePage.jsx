@@ -26,6 +26,8 @@ const NotePage = () => {
   const [editingTitle, setEditingTitle] = useState('');
   const [saving, setSaving] = useState(false);
   const [validDeleteToken, setValidDeleteToken] = useState(false);
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState('');
 
   // Ensure note pages are not indexed
   useEffect(() => {
@@ -43,6 +45,21 @@ const NotePage = () => {
       else meta.parentElement && meta.parentElement.removeChild(meta);
     };
   }, []);
+
+  const addComment = async () => {
+    const text = (newComment || '').trim();
+    if (!text || !recording) return;
+    const entry = { text, ts: Date.now(), by: identity || 'Anonymous' };
+    const next = [...comments, entry];
+    try {
+      await updateRecording(recording.id, { comments: next });
+      setComments(next);
+      setNewComment('');
+      toast('Comment added');
+    } catch (e) {
+      toast('Failed to add comment');
+    }
+  };
 
   // Load recording (try fast path from state, then direct IndexedDB read)
   useEffect(() => {
@@ -67,6 +84,7 @@ const NotePage = () => {
         setEditingTitle(rec.name || 'Untitled');
         const b = getRecordingBlob(rec);
         setBlob(b);
+        setComments(Array.isArray(rec.comments) ? rec.comments : []);
         setLoading(false);
         // Validate delete token if present
         if (token && rec.deleteToken && token === rec.deleteToken) {
@@ -94,9 +112,24 @@ const NotePage = () => {
 
   const shareMessage = useMemo(() => {
     const home = window.location.origin + '/';
-    const who = identity ? `${identity} shared a recording.` : 'Here is a recording.';
-    return `${who}\n${shareUrl}\n\nDo you want to use this app? ${home}`;
+    const who = identity ? `🎧 ${identity} shared a recording:` : '🎧 Here is a recording:';
+    const app = `✨ Try RecordNow: ${home}`;
+    const copyright = '© Ignite Consulting';
+    return `${shareUrl}\n\n${who}\n${app}\n${copyright}`;
   }, [identity, shareUrl]);
+
+  const handleShare = (platform) => {
+    const link = shareUrl;
+    const text = shareMessage;
+    const shareUrls = {
+      twitter: `https://twitter.com/intent/tweet?url=${encodeURIComponent(link)}&text=${encodeURIComponent(text)}`,
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(link)}&quote=${encodeURIComponent(text)}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(link)}`,
+      whatsapp: `https://wa.me/?text=${encodeURIComponent(text)}`,
+    };
+    const w = window.open(shareUrls[platform], '_blank', 'width=600,height=400,noopener,noreferrer');
+    if (w) w.opener = null;
+  };
 
   const onSaveTitle = async () => {
     if (!recording) return;
@@ -188,6 +221,18 @@ const NotePage = () => {
         <p className="error-message">Unable to load audio</p>
       )}
 
+      {blob && (
+        <div className="share-row" style={{ marginTop: 8 }}>
+          <a
+            className="secondary-button"
+            href={URL.createObjectURL(blob)}
+            download={`${(recording?.name || 'recording').replace(/\s+/g,'_')}.webm`}
+          >
+            Download (WEBM)
+          </a>
+        </div>
+      )}
+
       <section className="share-section">
         <h3>Share</h3>
         <div className="share-row">
@@ -209,13 +254,23 @@ const NotePage = () => {
           />
         </div>
         <div className="share-row">
-          <textarea className="embed-code" readOnly value={shareMessage} rows={3} />
+          <div className="share-preview">
+            <div><strong>{identity || 'Someone'}</strong> shared a recording.</div>
+            <div><a href={shareUrl} target="_blank" rel="noopener noreferrer">{shareUrl}</a></div>
+            <div style={{ marginTop: 8 }}>Do you want to use this app? <a href="/" rel="noopener noreferrer">{window.location.origin}/</a></div>
+          </div>
           <button
             className="secondary-button"
             onClick={() => { navigator.clipboard.writeText(shareMessage); toast('Copied message'); }}
           >
             Copy Message
           </button>
+        </div>
+        <div className="share-row" style={{ gap: 8 }}>
+          <button className="secondary-button" onClick={() => handleShare('whatsapp')}>WhatsApp</button>
+          <button className="secondary-button" onClick={() => handleShare('twitter')}>Twitter</button>
+          <button className="secondary-button" onClick={() => handleShare('facebook')}>Facebook</button>
+          <button className="secondary-button" onClick={() => handleShare('linkedin')}>LinkedIn</button>
         </div>
         <div className="share-row">
           <textarea className="embed-code" readOnly value={embedCode} rows={3} />
@@ -229,6 +284,30 @@ const NotePage = () => {
         <p className="privacy-note">
           This is a local-only preview link. It works on this device/browser where the note is saved. No account or remote upload is used.
         </p>
+      </section>
+
+      <section className="comments-section" style={{ marginTop: 16 }}>
+        <h3>Comments</h3>
+        <div className="share-row">
+          <input
+            className="title-input"
+            placeholder="Write a comment"
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            onKeyDown={async (e) => { if (e.key === 'Enter') await addComment(); }}
+          />
+          <button className="secondary-button" onClick={async () => { await addComment(); }}>Post</button>
+        </div>
+        <div className="comments-list" style={{ display: 'grid', gap: 8, marginTop: 8 }}>
+          {comments.length === 0 ? (
+            <div className="glass" style={{ padding: 12, borderRadius: 12, color: 'var(--text-muted)' }}>No comments yet</div>
+          ) : comments.map((c, i) => (
+            <div key={i} className="glass" style={{ padding: 12, borderRadius: 12 }}>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{new Date(c.ts).toLocaleString()} — {c.by || 'Anonymous'}</div>
+              <div>{c.text}</div>
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );

@@ -13,6 +13,8 @@ const PlaybackControls = ({ audioBlob }) => {
   const waveformRef = useRef(null);
   const wavesurfer = useRef(null);
   const audioUrlRef = useRef(null);
+  const lastUiUpdate = useRef(0);
+  const isSeekingRef = useRef(false);
 
   // Initialize WaveSurfer once
   useEffect(() => {
@@ -39,12 +41,20 @@ const PlaybackControls = ({ audioBlob }) => {
       });
 
       wavesurfer.current.on('audioprocess', () => {
+        // Throttle UI updates to ~5fps to avoid layout jitter on long playback
+        const now = performance.now();
+        if (now - lastUiUpdate.current < 300) return;
+        lastUiUpdate.current = now;
         const t = wavesurfer.current.getCurrentTime();
         const d = wavesurfer.current.getDuration() || 1;
         setCurrentTime(formatTime(t));
-        setProgress(Math.max(0, Math.min(1, t / d)));
-        setIsPlaying(wavesurfer.current.isPlaying());
+        if (!isSeekingRef.current) {
+          setProgress(Math.max(0, Math.min(1, t / d)));
+        }
       });
+
+      wavesurfer.current.on('play', () => setIsPlaying(true));
+      wavesurfer.current.on('pause', () => setIsPlaying(false));
 
       wavesurfer.current.on('error', (err) => {
         // Suppress console noise for AbortError (harmless during rapid unmounts or reloads)
@@ -125,6 +135,9 @@ const PlaybackControls = ({ audioBlob }) => {
     }
   };
 
+  const onSeekStart = () => { isSeekingRef.current = true; };
+  const onSeekEnd = () => { isSeekingRef.current = false; };
+
   const onVolume = (e) => {
     const value = parseFloat(e.target.value);
     setVolume(value);
@@ -150,7 +163,7 @@ const PlaybackControls = ({ audioBlob }) => {
           {isPlaying ? '⏸' : '▶'}
         </button>
         <div className="waveform-playback" ref={waveformRef}></div>
-        <div className="time-display">
+        <div className="time-display" style={{ fontFamily: 'monospace', minWidth: `${(duration || '00:00').length * 1.2}ch`, textAlign: 'right' }}>
           {currentTime} / {duration}
         </div>
       </div>
@@ -162,6 +175,10 @@ const PlaybackControls = ({ audioBlob }) => {
           step="0.001"
           value={progress}
           onChange={onSeek}
+          onMouseDown={onSeekStart}
+          onMouseUp={onSeekEnd}
+          onTouchStart={onSeekStart}
+          onTouchEnd={onSeekEnd}
           aria-label="Seek"
           className="seekbar"
         />

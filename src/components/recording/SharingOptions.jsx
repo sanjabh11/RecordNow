@@ -39,8 +39,11 @@ const SharingOptions = ({ recording }) => {
   const buildShareMessage = () => {
     const note = generateShareableLink();
     const home = window.location.origin + '/';
-    const who = identity ? `${identity} shared a recording.` : 'Here is a recording.';
-    return `${who}\n${note}\n\nHow about recording your own voicenote or song? ${home}`;
+    const who = identity ? `🎧 ${identity} shared a recording:` : '🎧 Here is a recording:';
+    const app = `✨ Try RecordNow: ${home}`;
+    const copyright = '© Ignite Consulting';
+    // Put the URL first to maximize auto-link detection in apps (WhatsApp, SMS, some email)
+    return `${note}\n\n${who}\n${app}\n${copyright}`;
   };
 
   const handleShare = (platform) => {

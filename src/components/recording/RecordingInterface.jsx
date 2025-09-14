@@ -15,6 +15,7 @@ const RecordingInterface = ({
   const timerInterval = useRef(null);
   const waveformRef = useRef(null);
   const wavesurfer = useRef(null);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     // Initialize WaveSurfer
@@ -223,6 +224,13 @@ const RecordingInterface = ({
           <div className="upload-text">Drag & drop or click to browse.</div>
           <div className="upload-meta">Up to 60 MB. MP3, WAV, M4A, AAC.</div>
         </div>
+        <input 
+          ref={fileInputRef}
+          type="file"
+          accept="audio/*,.mp3,.wav,.m4a,.aac"
+          onChange={handleFileUpload}
+          style={{ display: 'none' }}
+        />
       </section>
     </div>
   );
